@@ -38,7 +38,10 @@
         input, textarea, select {
             background: rgba(255,255,255,0.04); border: 1px solid var(--border);
             color: white; padding: 12px; border-radius: 8px; font-size: 16px; width: 100%; box-sizing: border-box;
+            outline: none;
         }
+        
+        input:focus, textarea:focus { border-color: var(--primary); }
 
         .check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .check-item { 
@@ -50,11 +53,14 @@
         footer {
             position: fixed; bottom: 0; width: 100%; background: var(--panel);
             padding: 12px; border-top: 1px solid var(--border); display: flex; gap: 8px; box-sizing: border-box;
+            z-index: 50;
         }
 
-        .btn { flex: 1; padding: 14px; border-radius: 8px; border: none; font-weight: 800; font-size: 13px; }
+        .btn { flex: 1; padding: 14px; border-radius: 8px; border: none; font-weight: 800; font-size: 13px; cursor: pointer; transition: 0.2s; }
+        .btn:active { transform: scale(0.98); }
         .btn-forge { background: var(--primary); color: white; }
         .btn-sync { background: transparent; border: 1px solid var(--border); color: #9ca3af; }
+        .btn-gh { background: #24292e; color: white; border: 1px solid #444; }
 
         /* Stage Overlay (Preview & Code Vault) */
         #stage {
@@ -65,14 +71,33 @@
         #stage.active { transform: translateY(0); }
 
         .stage-tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); }
-        .s-tab { flex: 1; padding: 15px; border: none; background: none; color: #666; font-size: 12px; font-weight: 700; }
+        .s-tab { flex: 1; padding: 15px; border: none; background: none; color: #666; font-size: 12px; font-weight: 700; cursor: pointer; }
         .s-tab.active { color: white; border-bottom: 2px solid var(--primary); }
 
-        #preview-frame { flex: 1; background: white; border: none; }
-        .vault { flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .v-card { background: #111; border: 1px solid var(--border); border-radius: 8px; }
-        .v-card label { font-size: 9px; padding: 4px 8px; color: #444; display: block; }
-        .v-card textarea { height: 120px; border: none; font-family: monospace; color: var(--accent); font-size: 12px; }
+        #preview-frame { flex: 1; background: white; border: none; width: 100%; height: 100%; }
+        
+        .vault { flex: 1; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding-bottom: 80px; }
+        .v-card { background: #111; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+        
+        /* Vault Toolbar */
+        .v-toolbar {
+            background: #1f2937; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid var(--border);
+        }
+        .v-toolbar label { font-size: 10px; font-weight: 700; color: var(--accent); letter-spacing: 0.5px; }
+        .v-actions { display: flex; gap: 6px; }
+        .v-btn { 
+            background: rgba(255,255,255,0.1); border: none; color: #ccc; 
+            font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer; 
+        }
+        .v-btn:hover { background: var(--primary); color: white; }
+
+        .v-card textarea { 
+            height: 200px; border: none; font-family: 'Courier New', monospace; 
+            color: #d1d5db; font-size: 12px; background: #0f1115; resize: none;
+            padding: 12px; line-height: 1.4;
+        }
+        .v-card textarea:focus { border: none; outline: none; background: #000; }
 
         /* Animation Pulse */
         #pulse {
@@ -85,19 +110,28 @@
         /* Key Vault */
         #vault-modal { position: fixed; inset: 0; background: #000; z-index: 600; padding: 25px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
         .hidden { display: none !important; }
+        
+        /* Floating Action in Stage */
+        .fab-container {
+            position: absolute; bottom: 20px; right: 20px; display: flex; gap: 10px; z-index: 501;
+        }
+        .fab {
+            background: var(--primary); color: white; border: none; width: 50px; height: 50px; border-radius: 25px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
     </style>
 </head>
 <body>
 
     <header>
-        <div class="brand">ORION FORGE 2.0</div>
+        <div class="brand">ORION FORGE 2.1</div>
         <button onclick="toggleView('vault-modal')" style="background:none; border:none; color:var(--primary); font-size:1.2rem">⚙️</button>
     </header>
 
     <main class="workspace">
         <section>
             <span class="section-label">Identity & Type</span>
-            <input type="text" id="app-name" placeholder="client-repo-slug" style="margin-bottom:8px">
+            <input type="text" id="app-name" placeholder="repo-name-slug" style="margin-bottom:8px">
             <select id="app-type">
                 <option value="PWA">PWA (Installable)</option>
                 <option value="APPSCRIPT">Google Apps Script</option>
@@ -141,44 +175,99 @@
     </main>
 
     <footer>
-        <button class="btn btn-sync" onclick="toggleView('stage')">PREVIEW / CODE</button>
-        <button class="btn btn-forge" onclick="executeForge()">🔨 FORGE APP</button>
+        <button class="btn btn-sync" onclick="toggleView('stage')">OPEN VAULT</button>
+        <button class="btn btn-forge" onclick="executeForge()">🔨 FORGE NEW</button>
     </footer>
 
+    <!-- STAGE AREA -->
     <div id="stage">
         <div class="stage-tabs">
             <button class="s-tab active" onclick="switchStage('preview', this)">PREVIEW</button>
-            <button class="s-tab" onclick="switchStage('vault', this)">CODE VAULT (6)</button>
+            <button class="s-tab" onclick="switchStage('vault', this)">CODE VAULT</button>
             <button class="s-tab" onclick="toggleView('stage')" style="color:#ef4444">CLOSE</button>
         </div>
-        <div id="view-preview" style="flex:1; display:flex;"><iframe id="preview-frame"></iframe></div>
+        
+        <!-- Preview Window -->
+        <div id="view-preview" style="flex:1; display:flex; position:relative;">
+            <iframe id="preview-frame"></iframe>
+            <!-- Refresh Button for Preview -->
+            <button onclick="updatePreview()" style="position:absolute; bottom:20px; right:20px; background:var(--accent); color:black; border:none; padding:10px 20px; border-radius:20px; font-weight:bold; box-shadow:0 4px 10px rgba(0,0,0,0.5);">
+                ▶ RUN CODE
+            </button>
+        </div>
+
+        <!-- Code Vault Window -->
         <div id="view-vault" class="vault hidden">
-            <div class="v-card"><label>INDEX.HTML</label><textarea id="out-html"></textarea></div>
-            <div class="v-card"><label>APP.JS</label><textarea id="out-js"></textarea></div>
-            <div class="v-card"><label>CODE.GS</label><textarea id="out-gs"></textarea></div>
-            <div class="v-card"><label>MANIFEST.JSON</label><textarea id="out-manifest"></textarea></div>
-            <div class="v-card"><label>SW.JS</label><textarea id="out-sw"></textarea></div>
-            <div class="v-card"><label>README.MD</label><textarea id="out-readme"></textarea></div>
+            <!-- PUSH TO GITHUB BUTTON -->
+            <button onclick="pushToGithub()" class="btn btn-gh" style="margin-bottom:10px;">
+                <span id="gh-btn-text">🚀 PUSH TO GITHUB</span>
+            </button>
+
+            <!-- File: INDEX.HTML -->
+            <div class="v-card">
+                <div class="v-toolbar">
+                    <label>INDEX.HTML</label>
+                    <div class="v-actions">
+                        <button class="v-btn" onclick="clearField('out-html')">CLR</button>
+                        <button class="v-btn" onclick="copyField('out-html')">COPY</button>
+                    </div>
+                </div>
+                <textarea id="out-html" spellcheck="false" placeholder="Paste HTML here..."></textarea>
+            </div>
+
+            <!-- File: CODE.GS -->
+            <div class="v-card">
+                <div class="v-toolbar">
+                    <label>CODE.GS</label>
+                    <div class="v-actions">
+                        <button class="v-btn" onclick="clearField('out-gs')">CLR</button>
+                        <button class="v-btn" onclick="copyField('out-gs')">COPY</button>
+                    </div>
+                </div>
+                <textarea id="out-gs" spellcheck="false" placeholder="Paste Apps Script here..."></textarea>
+            </div>
+
+            <!-- File: MANIFEST.JSON -->
+            <div class="v-card">
+                <div class="v-toolbar">
+                    <label>MANIFEST.JSON</label>
+                    <div class="v-actions">
+                        <button class="v-btn" onclick="clearField('out-manifest')">CLR</button>
+                        <button class="v-btn" onclick="copyField('out-manifest')">COPY</button>
+                    </div>
+                </div>
+                <textarea id="out-manifest" spellcheck="false"></textarea>
+            </div>
         </div>
     </div>
 
+    <!-- SETTINGS MODAL -->
     <div id="vault-modal" class="hidden">
         <h2 style="color:var(--primary)">Secure Key Vault</h2>
+        <p style="font-size:12px; color:#666;">Keys are stored in your local browser only.</p>
+        
+        <span class="section-label">Gemini API Key</span>
         <input type="password" id="GEMINI_KEY" placeholder="Gemini 2.0 Flash Key">
-        <input type="password" id="GH_PAT" placeholder="GitHub PAT">
-        <input type="text" id="SHEET_ID" placeholder="Google Sheet ID">
-        <input type="text" id="YOCO_KEY" placeholder="Yoco Secret Key">
-        <input type="text" id="DISC_WEB" placeholder="Discord Webhook URL">
-        <input type="text" id="DRIVE_ID" placeholder="Drive Client ID">
-        <button class="btn btn-forge" onclick="toggleView('vault-modal')" style="width:100%">SAVE & ENCRYPT</button>
+        
+        <span class="section-label">GitHub Personal Access Token</span>
+        <input type="password" id="GH_PAT" placeholder="ghp_xxxxxxxxxxxx">
+        
+        <span class="section-label">Google Sheet ID</span>
+        <input type="text" id="SHEET_ID" placeholder="Spreadsheet ID">
+        
+        <button class="btn btn-forge" onclick="saveKeys()" style="width:100%; margin-top:20px;">SAVE KEYS</button>
+        <button class="btn btn-sync" onclick="toggleView('vault-modal')" style="width:100%; margin-top:10px;">CLOSE</button>
     </div>
 
+    <!-- LOADING PULSE -->
     <div id="pulse" class="hidden">
         <div class="ring"></div>
         <p id="pulse-msg" style="margin-top:20px; font-weight:800; color:var(--primary)">FORGING NEURAL LINKS...</p>
     </div>
 
     <script>
+        // --- UI FUNCTIONS ---
+
         function toggleView(id) {
             const el = document.getElementById(id);
             if(id === 'stage') el.classList.toggle('active');
@@ -192,6 +281,50 @@
             btn.classList.add('active');
         }
 
+        function clearField(id) {
+            document.getElementById(id).value = '';
+        }
+
+        function copyField(id) {
+            const el = document.getElementById(id);
+            el.select();
+            document.execCommand('copy'); // Fallback for older webviews
+            navigator.clipboard.writeText(el.value).then(() => {
+                alert('Copied to clipboard!');
+            }).catch(err => {
+                console.log('Clipboard API failed, fallback used');
+            });
+        }
+
+        function saveKeys() {
+            localStorage.setItem('GEMINI_KEY', document.getElementById('GEMINI_KEY').value);
+            localStorage.setItem('GH_PAT', document.getElementById('GH_PAT').value);
+            localStorage.setItem('SHEET_ID', document.getElementById('SHEET_ID').value);
+            alert('Keys Saved to LocalStorage');
+            toggleView('vault-modal');
+        }
+
+        // Load keys on start
+        window.onload = () => {
+            if(localStorage.getItem('GEMINI_KEY')) document.getElementById('GEMINI_KEY').value = localStorage.getItem('GEMINI_KEY');
+            if(localStorage.getItem('GH_PAT')) document.getElementById('GH_PAT').value = localStorage.getItem('GH_PAT');
+            if(localStorage.getItem('SHEET_ID')) document.getElementById('SHEET_ID').value = localStorage.getItem('SHEET_ID');
+        }
+
+        // --- CORE LOGIC ---
+
+        function updatePreview() {
+            const code = document.getElementById('out-html').value;
+            const frame = document.getElementById('preview-frame').contentWindow.document;
+            frame.open(); 
+            frame.write(code); 
+            frame.close();
+            // Switch to preview tab if not already there
+            if(document.getElementById('view-preview').classList.contains('hidden')) {
+                switchStage('preview', document.querySelector('.s-tab'));
+            }
+        }
+
         async function executeForge() {
             const p = document.getElementById('pulse');
             const msg = document.getElementById('pulse-msg');
@@ -200,24 +333,123 @@
             const steps = [
                 "Analyzing POPI Compliance Path...",
                 "Syncing Gemini 2.0 Infrastructure...",
-                "Generating 6-File Production Suite...",
+                "Generating Production Suite...",
                 "Optimizing for Honor x6b Fluid Layout..."
             ];
 
             for (let s of steps) {
                 msg.innerText = s;
-                await new Promise(r => setTimeout(r, 1200));
+                await new Promise(r => setTimeout(r, 800));
             }
 
-            // Mock Data Output
-            document.getElementById('out-html').value = "<!DOCTYPE html><html><body style='padding:50px; text-align:center;'><h1>Orion Forged App Live</h1><p>POPI Compliant Architecture.</p></body></html>";
-            
-            const frame = document.getElementById('preview-frame').contentWindow.document;
-            frame.open(); frame.write(document.getElementById('out-html').value); frame.close();
+            // MOCK GENERATION (Replace with Real Gemini Call if you want)
+            const appName = document.getElementById('app-name').value || "Orion App";
+            const generatedHTML = `<!DOCTYPE html>
+<html>
+<head>
+<title>${appName}</title>
+<style>
+  body { background: #000; color: #fff; font-family: sans-serif; padding: 20px; text-align: center; }
+  .card { background: #222; padding: 20px; border-radius: 10px; border: 1px solid #444; margin-top: 20px; }
+  h1 { color: #8b5cf6; }
+</style>
+</head>
+<body>
+  <h1>${appName}</h1>
+  <div class="card">
+    <p>Forged by Orion Dev Core.</p>
+    <button onclick="alert('System Active')" style="padding:10px 20px; background:#10b981; border:none; border-radius:5px; margin-top:10px;">Test System</button>
+  </div>
+</body>
+</html>`;
 
+            document.getElementById('out-html').value = generatedHTML;
+            document.getElementById('out-gs').value = `function doGet() { return HtmlService.createHtmlOutputFromFile('index'); }`;
+            document.getElementById('out-manifest').value = `{"name": "${appName}", "display": "standalone"}`;
+
+            updatePreview();
             p.classList.add('hidden');
             toggleView('stage');
         }
+
+        // --- GITHUB INTEGRATION ---
+        
+        async function pushToGithub() {
+            const pat = localStorage.getItem('GH_PAT');
+            const repoName = document.getElementById('app-name').value;
+            const btn = document.getElementById('gh-btn-text');
+
+            if (!pat || !repoName) {
+                alert("Missing PAT or Repo Name (App Name)");
+                return;
+            }
+
+            btn.innerText = "⏳ AUTHENTICATING...";
+
+            try {
+                // 1. Get User Data
+                const userRes = await fetch('https://api.github.com/user', {
+                    headers: { Authorization: `token ${pat}` }
+                });
+                if(!userRes.ok) throw new Error("Invalid PAT");
+                const user = await userRes.json();
+                
+                // 2. Create Repo (if not exists)
+                btn.innerText = "⏳ CHECKING REPO...";
+                await fetch('https://api.github.com/user/repos', {
+                    method: 'POST',
+                    headers: { Authorization: `token ${pat}`, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: repoName, private: true, auto_init: true })
+                }); // Ignore error if exists
+
+                // 3. Push File (index.html)
+                btn.innerText = "⏳ PUSHING INDEX...";
+                await uploadFile(user.login, repoName, 'index.html', document.getElementById('out-html').value, pat);
+                
+                // 4. Push File (code.gs)
+                if(document.getElementById('out-gs').value) {
+                   btn.innerText = "⏳ PUSHING SCRIPT...";
+                   await uploadFile(user.login, repoName, 'code.gs', document.getElementById('out-gs').value, pat); 
+                }
+
+                btn.innerText = "✅ PUSH COMPLETE";
+                setTimeout(() => btn.innerText = "🚀 PUSH TO GITHUB", 3000);
+                alert(`Successfully pushed to https://github.com/${user.login}/${repoName}`);
+
+            } catch (err) {
+                alert("GitHub Error: " + err.message);
+                btn.innerText = "❌ ERROR";
+            }
+        }
+
+        async function uploadFile(owner, repo, path, content, token) {
+            // Get SHA if file exists
+            let sha = null;
+            try {
+                const getRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                    headers: { Authorization: `token ${token}` }
+                });
+                if(getRes.ok) {
+                    const data = await getRes.json();
+                    sha = data.sha;
+                }
+            } catch(e) {}
+
+            // Create/Update
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+                method: 'PUT',
+                headers: { Authorization: `token ${token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: "Orion Forge Update",
+                    content: btoa(unescape(encodeURIComponent(content))), // Base64 encode
+                    sha: sha
+                })
+            });
+            if(!res.ok) throw new Error("Failed to upload " + path);
+        }
+
     </script>
 </body>
 </html>
+
+
